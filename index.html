@@ -327,7 +327,8 @@ function injectInspectScript() {
       _ov.style.display='block';
     }, true);
     document.addEventListener('mouseout', function(){ _ov.style.display='none'; }, true);
- document.addEventListener('click', function(e){
+document.addEventListener('click', function(e){
+  if (!window.__inspectActive) return;
   e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
       var el = e.target;
       var attrs = [];
@@ -353,6 +354,29 @@ function removeInspectScript() {
 }
 
 function reloadPreview() { doUpdate(); showToast('再読み込みしました'); }
+
+  function toggleInspect() {
+  inspectMode = !inspectMode;
+  const btn = document.getElementById('btn-inspect');
+  const badge = document.getElementById('inspect-badge');
+  btn.classList.toggle('active', inspectMode);
+  badge.classList.toggle('on', inspectMode);
+  
+  // iframeにON/OFFを伝える
+  const win = frame.contentWindow;
+  if (win) win.__inspectActive = inspectMode;
+  
+  if (inspectMode) {
+    showToast('🔍 検査モード ON — プレビューの要素をクリック');
+    frame.style.cursor = 'crosshair';
+    injectInspectScript();
+  } else {
+    showToast('検査モード OFF');
+    frame.style.cursor = '';
+    hideElemInfo();
+    removeInspectScript();
+  }
+}
 
 /* ══════════════════════════════
    行番号
