@@ -332,12 +332,25 @@ function injectInspectScript() {
     var _ov = document.createElement('div');
     _ov.style.cssText = 'position:fixed;pointer-events:none;z-index:99999;outline:2px solid #5b9cf6;outline-offset:-1px;background:rgba(91,156,246,0.08);transition:top .06s,left .06s,width .06s,height .06s;border-radius:2px;display:none;';
     document.documentElement.appendChild(_ov);
-    document.addEventListener('mouseover', function(e){
-      var r = e.target.getBoundingClientRect();
-      _ov.style.top=r.top+'px'; _ov.style.left=r.left+'px';
-      _ov.style.width=r.width+'px'; _ov.style.height=r.height+'px';
-      _ov.style.display='block';
-    }, true);
+document.addEventListener('mouseover', function(e){
+  var r = e.target.getBoundingClientRect();
+  _ov.style.top=r.top+'px'; _ov.style.left=r.left+'px';
+  _ov.style.width=r.width+'px'; _ov.style.height=r.height+'px';
+  _ov.style.display='block';
+  // 要素情報を親に送る（ホバー時）
+  var el = e.target;
+  var attrs = [];
+  if (el.attributes) for (var i=0;i<el.attributes.length;i++)
+    attrs.push({name:el.attributes[i].name, value:el.attributes[i].value});
+  window.parent.postMessage({
+    type:'inspectHover',
+    tag: el.tagName ? el.tagName.toLowerCase() : '',
+    id: el.id||'',
+    cls: typeof el.className==='string' ? el.className.trim() : '',
+    attrs: attrs,
+    outerHTML: el.outerHTML.slice(0,200)
+  }, '*');
+}, true);
     document.addEventListener('mouseout', function(){ _ov.style.display='none'; }, true);
 document.addEventListener('click', function(e){
   if (!window.__inspectActive) return;
@@ -435,11 +448,36 @@ function toggleInspect() {
 
 // postMessage 受信
 window.addEventListener('message', (e) => {
-  if (!e.data || e.data.type !== 'inspectClick') return;
-  const { tag, id, cls, text, attrs } = e.data;
-  jumpToElement({ tag, id, cls, text, attrs });
+  if (!e.data) return;
+  if (e.data.type === 'inspectClick') jumpToElement(e.data);
+  if (e.data.type === 'inspectHover') hoverElement(e.data);
 });
 
+function hoverElement({ tag, id, cls, attrs, outerHTML }) {
+  // outerHTMLの先頭部分でコード検索
+  const src = editor.value;
+  const lines = src.split('\n');
+  let bestIdx = -1, bestScore = -1, charPos = 0;
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    const lineL = line.toLowerCase();
+    const tagPat = '<' + tag;
+    if (!lineL.includes(tagPat)) { charPos += line.length + 1; continue; }
+    let score = 1;
+    if (id && line.includes('id="' + id + '"')) score += 100;
+    if (cls) { const firstCls = cls.split(' ')[0]; if (firstCls && line.includes(firstCls)) score += 30; }
+    if (attrs) attrs.forEach(a => { if (a.name !== 'id' && line.includes(a.name + '="' + a.value + '"')) score += 15; });
+    if (score > bestScore) { bestScore = score; bestIdx = charPos; }
+    charPos += line.length + 1;
+  }
+  if (bestIdx === -1) return;
+  const lineNo = src.substring(0, bestIdx).split('\n').length;
+  showElemInfo(tag, id, cls, lineNo);
+  // ハイライトだけ（ジャンプはしない）
+  lineHl.style.top = ((lineNo - 1) * parseFloat(getComputedStyle(editor).lineHeight) + 12) + 'px';
+  lineHl.style.height = parseFloat(getComputedStyle(editor).lineHeight) + 'px';
+}
+  
 function jumpToElement({ tag, id, cls, text, attrs }) {
   const src = editor.value;
   const lines = src.split('\n');
