@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HTML Live Editor</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0f0f0f; --bg2: #1a1a1a; --bg3: #242424;
+  --border: rgba(255,255,255,0.08); --border2: rgba(255,255,255,0.15);
+  --text: #e8e6e0; --text2: #888882; --text3: #555550;
+  --accent: #d4a843; --accent2: #a87c2a;
+  --green: #4caf7d; --red: #e05a5a; --blue: #5b9cf6;
+  --highlight: rgba(212,168,67,0.22);
+  --radius: 6px;
+  --font-mono: 'JetBrains Mono','Fira Code','Cascadia Code','SF Mono',Consolas,monospace;
+  --font-ui: 'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+}
+html,body { height:100%; background:var(--bg); color:var(--text); font-family:var(--font-ui); overflow:hidden; }
+
+/* TOP BAR */
+#topbar {
+  height:44px; display:flex; align-items:center; gap:10px;
+  padding:0 16px; background:var(--bg2);
+  border-bottom:1px solid var(--border); flex-shrink:0; user-select:none;
+}
+#logo { font-size:13px; font-weight:600; letter-spacing:.08em; color:var(--accent); white-space:nowrap; margin-right:4px; }
+.divider { width:1px; height:18px; background:var(--border2); flex-shrink:0; }
+#filename {
+  background:transparent; border:none; color:var(--text2);
+  font-family:var(--font-mono); font-size:12px; outline:none;
+  width:160px; padding:2px 6px; border-radius:var(--radius); transition:background .15s;
+}
+#filename:hover { background:var(--bg3); }
+#filename:focus { background:var(--bg3); color:var(--text); }
+#status { font-size:11px; color:var(--text3); white-space:nowrap; }
+#status.saving { color:var(--accent); }
+#status.saved  { color:var(--green); }
+.tb-btn {
+  height:28px; padding:0 10px; background:transparent;
+  border:1px solid var(--border2); border-radius:var(--radius);
+  color:var(--text2); font-family:var(--font-ui); font-size:12px;
+  cursor:pointer; display:flex; align-items:center; gap:5px;
+  white-space:nowrap; transition:all .12s;
+}
+.tb-btn:hover { background:var(--bg3); color:var(--text); }
+.tb-btn:active { transform:scale(.97); }
+.tb-btn.accent { background:var(--accent); border-color:var(--accent); color:#1a1000; font-weight:600; }
+.tb-btn.accent:hover { background:#e8bc5a; border-color:#e8bc5a; }
+.tb-btn.active { background:var(--bg3); color:var(--blue); border-color:var(--blue); }
+.layout-grp {
+  display:flex; gap:2px; background:var(--bg3);
+  border-radius:var(--radius); padding:2px; border:1px solid var(--border);
+}
+.layout-grp button {
+  height:22px; padding:0 8px; background:transparent; border:none;
+  border-radius:4px; color:var(--text3); font-size:11px; cursor:pointer; transition:all .12s;
+}
+.layout-grp button.active { background:var(--bg2); color:var(--text); font-weight:600; }
+.spacer { flex:1; }
+
+/* MAIN */
+#main { display:flex; height:calc(100vh - 44px); }
+#main.layout-side  { flex-direction:row; }
+#main.layout-stack { flex-direction:column; }
+
+/* EDITOR PANE */
+#editor-pane {
+  display:flex; flex-direction:column; background:var(--bg2);
+  overflow:hidden; flex-shrink:0;
+}
+#main.layout-side  #editor-pane { width:50%; border-right:1px solid var(--border); }
+#main.layout-stack #editor-pane { height:45%; border-bottom:1px solid var(--border); }
+
+.pane-header {
+  height:32px; display:flex; align-items:center; gap:8px;
+  padding:0 12px; border-bottom:1px solid var(--border); flex-shrink:0;
+}
+.pane-title { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text3); }
+#line-count { font-size:11px; color:var(--text3); margin-left:auto; font-family:var(--font-mono); }
+
+/* EDITOR */
+#editor-wrap { flex:1; display:flex; overflow:hidden; position:relative; }
+#line-numbers {
+  padding:12px 10px 12px 8px;
+  min-width:42px; text-align:right;
+  font-family:var(--font-mono); font-size:13px; line-height:1.65;
+  color:var(--text3); background:var(--bg2); border-right:1px solid var(--border);
+  overflow:hidden; user-select:none; flex-shrink:0; position:relative;
+}
+/* 行ハイライトマーカー */
+#line-highlight {
+  position:absolute; left:0; right:0; height:0;
+  background:rgba(212,168,67,0.18); pointer-events:none;
+  transition:top .15s ease, height .15s ease;
+  border-right:2px solid var(--accent);
+}
+#editor {
+  flex:1; padding:12px 16px;
+  font-family:var(--font-mono); font-size:13px; line-height:1.65;
+  background:var(--bg2); color:var(--text); border:none; outline:none;
+  resize:none; overflow-y:auto; tab-size:2; white-space:pre;
+  overflow-wrap:normal; overflow-x:auto; caret-color:var(--accent);
+  position:relative;
+}
+#editor::selection { background:rgba(212,168,67,.25); }
+
+/* フラッシュオーバーレイ */
+#flash-overlay {
+  position:absolute; left:42px; right:0; pointer-events:none; overflow:hidden;
+  top:0; bottom:0;
+}
+#flash-line {
+  position:absolute; left:0; right:0; height:0;
+  background:rgba(212,168,67,0.35);
+  border-left:3px solid var(--accent);
+  pointer-events:none; opacity:0;
+  transition:opacity .3s;
+}
+
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:var(--text3); }
+
+/* PREVIEW PANE */
+#preview-pane { flex:1; display:flex; flex-direction:column; overflow:hidden; background:var(--bg); }
+#preview-toolbar {
+  height:32px; display:flex; align-items:center; gap:8px;
+  padding:0 12px; border-bottom:1px solid var(--border); flex-shrink:0;
+}
+#preview-url {
+  flex:1; height:20px; background:var(--bg3); border:1px solid var(--border);
+  border-radius:10px; font-size:11px; color:var(--text3); text-align:center;
+  line-height:20px; font-family:var(--font-mono); overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap;
+}
+#preview-frame { flex:1; width:100%; border:none; background:#fff; }
+
+/* ── INSPECT モード表示 ── */
+#inspect-badge {
+  display:none; align-items:center; gap:5px;
+  padding:0 10px; height:28px;
+  background:rgba(91,156,246,0.15); border:1px solid var(--blue);
+  border-radius:var(--radius); font-size:11px; color:var(--blue); white-space:nowrap;
+}
+#inspect-badge.on { display:flex; }
+#inspect-badge span { font-weight:600; }
+
+/* ── ELEMENT INFO BAR ── */
+#elem-info {
+  height:0; overflow:hidden; transition:height .15s;
+  background:var(--bg3); border-top:1px solid var(--border);
+  font-size:11px; font-family:var(--font-mono); color:var(--text2);
+  display:flex; align-items:center; gap:8px; padding:0 12px; flex-shrink:0;
+}
+#elem-info.show { height:28px; }
+#elem-tag  { color:var(--blue); font-weight:600; }
+#elem-id   { color:var(--accent); }
+#elem-cls  { color:var(--green); }
+#elem-line { margin-left:auto; color:var(--text3); }
+
+/* TOAST */
+#toast {
+  position:fixed; bottom:20px; left:50%;
+  transform:translateX(-50%) translateY(60px);
+  background:var(--text); color:var(--bg);
+  padding:7px 16px; border-radius:20px; font-size:13px;
+  opacity:0; transition:all .2s; pointer-events:none; z-index:9999; white-space:nowrap;
+}
+#toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* RESIZER */
+#resizer { flex-shrink:0; background:var(--border); transition:background .15s; z-index:10; }
+#main.layout-side  #resizer { width:4px; cursor:col-resize; }
+#main.layout-stack #resizer { height:4px; cursor:row-resize; }
+#resizer:hover, #resizer.dragging { background:var(--accent2); }
+
+/* SHORTCUTS */
+#shortcuts {
+  position:fixed; bottom:20px; right:20px;
+  background:var(--bg2); border:1px solid var(--border2);
+  border-radius:var(--radius); padding:10px 14px;
+  font-size:11px; color:var(--text3); line-height:1.8;
+  opacity:0; transition:opacity .2s; pointer-events:none;
+}
+#shortcuts.show { opacity:1; }
+#shortcuts kbd {
+  background:var(--bg3); border:1px solid var(--border2); border-radius:3px;
+  padding:0 4px; font-family:var(--font-mono); font-size:10px; color:var(--text2);
+}
+@media(hover:none){
+  .tb-btn{min-height:36px;padding:0 14px;}
+  .layout-grp button{min-height:26px;padding:0 10px;}
+  #editor{font-size:14px;}
+}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="logo">◈ LIVE EDITOR</div>
+  <div class="divider"></div>
+  <input id="filename" type="text" value="index.html" spellcheck="false" />
+  <span id="status">準備完了</span>
+  <div class="spacer"></div>
+
+  <!-- インスペクトボタン -->
+  <div id="inspect-badge"><span>● INSPECT</span> クリックで要素選択中</div>
+  <button class="tb-btn" id="btn-inspect" onclick="toggleInspect()" title="プレビューの要素をクリックしてコードに飛ぶ">🔍 検査</button>
+
+  <div class="layout-grp">
+    <button id="btn-side"  onclick="setLayout('side')"  class="active">⬜⬜</button>
+    <button id="btn-stack" onclick="setLayout('stack')">🟦</button>
+  </div>
+  <div class="divider"></div>
+  <button class="tb-btn" onclick="formatCode()">✦ 整形</button>
+  <button class="tb-btn" onclick="copyCode()">⎘ コピー</button>
+  <button class="tb-btn accent" onclick="downloadHtml()">↓ DL</button>
+  <button class="tb-btn" id="btn-shortcuts" onmouseenter="showShortcuts(true)" onmouseleave="showShortcuts(false)">?</button>
+</div>
+
+<div id="main" class="layout-side">
+  <!-- EDITOR -->
+  <div id="editor-pane">
+    <div class="pane-header">
+      <span class="pane-title">HTML</span>
+      <span id="line-count">0 行</span>
+    </div>
+    <div id="editor-wrap">
+      <div id="line-numbers">
+        <div id="line-highlight"></div>
+      </div>
+      <div id="flash-overlay"><div id="flash-line"></div></div>
+      <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="off"
+        placeholder="<!-- ここにHTMLを貼り付け -->&#10;&#10;🔍 検査ボタンをONにしてプレビューの要素をクリックすると&#10;    対応するコードにジャンプします"></textarea>
+    </div>
+    <!-- 要素情報バー -->
+    <div id="elem-info">
+      <span id="elem-tag"></span>
+      <span id="elem-id"></span>
+      <span id="elem-cls"></span>
+      <span id="elem-line"></span>
+    </div>
+  </div>
+
+  <div id="resizer"></div>
+
+  <!-- PREVIEW -->
+  <div id="preview-pane">
+    <div id="preview-toolbar">
+      <span class="pane-title">PREVIEW</span>
+      <div id="preview-url">about:blank</div>
+      <button class="tb-btn" onclick="reloadPreview()">↺</button>
+    </div>
+    <iframe id="preview-frame" sandbox="allow-scripts allow-same-origin allow-forms" title="プレビュー"></iframe>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="shortcuts">
+  <kbd>Tab</kbd> インデント<br>
+  <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> 整形<br>
+  <kbd>Ctrl</kbd>+<kbd>S</kbd> DL<br>
+  <kbd>Ctrl</kbd>+<kbd>Enter</kbd> 強制更新<br>
+  <kbd>Ctrl</kbd>+<kbd>I</kbd> 検査モード ON/OFF
+</div>
+
+<script>
+const editor    = document.getElementById('editor');
+const frame     = document.getElementById('preview-frame');
+const status    = document.getElementById('status');
+const lineNumEl = document.getElementById('line-numbers');
+const lineCount = document.getElementById('line-count');
+const previewUrl= document.getElementById('preview-url');
+const lineHl    = document.getElementById('line-highlight');
+const flashLine = document.getElementById('flash-line');
+const elemInfo  = document.getElementById('elem-info');
+
+let updateTimer = null;
+let layout = 'side';
+let inspectMode = false;
+
+/* ══════════════════════════════
+   プレビュー更新
+══════════════════════════════ */
+function updatePreview(force) {
+  status.textContent = '更新中…'; status.className = 'saving';
+  clearTimeout(updateTimer);
+  updateTimer = setTimeout(doUpdate, force ? 0 : 400);
+}
+
+function doUpdate() {
+  const html = editor.value;
+  const doc = frame.contentDocument || frame.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+  updateLineNumbers();
+  const fname = document.getElementById('filename').value || 'preview';
+  previewUrl.textContent = fname;
+  status.textContent = editor.value.split('\n').length + ' 行';
+  status.className = 'saved';
+  setTimeout(() => { status.className = ''; }, 1500);
+  // 検査モードがONなら更新後にスクリプトを再注入
+  if (inspectMode) {
+    frame.addEventListener('load', injectInspectScript, { once: true });
+  }
+}
+
+// インスペクト用スクリプトをiframeに動的注入（iframe再生成しない）
+function injectInspectScript() {
+  const win = frame.contentWindow;
+  if (!win || win.__inspectInjected) return;
+  win.__inspectInjected = true;
+  const s = win.document.createElement('script');
+  s.textContent = `(function(){
+    if (window.__inspectInjected) return;
+    window.__inspectInjected = true;
+    var _ov = document.createElement('div');
+    _ov.style.cssText = 'position:fixed;pointer-events:none;z-index:99999;outline:2px solid #5b9cf6;outline-offset:-1px;background:rgba(91,156,246,0.08);transition:top .06s,left .06s,width .06s,height .06s;border-radius:2px;display:none;';
+    document.documentElement.appendChild(_ov);
+    document.addEventListener('mouseover', function(e){
+      var r = e.target.getBoundingClientRect();
+      _ov.style.top=r.top+'px'; _ov.style.left=r.left+'px';
+      _ov.style.width=r.width+'px'; _ov.style.height=r.height+'px';
+      _ov.style.display='block';
+    }, true);
+    document.addEventListener('mouseout', function(){ _ov.style.display='none'; }, true);
+    document.addEventListener('click', function(e){
+      e.preventDefault(); e.stopPropagation();
+      var el = e.target;
+      var attrs = [];
+      if (el.attributes) for (var i=0;i<el.attributes.length;i++)
+        attrs.push({name:el.attributes[i].name, value:el.attributes[i].value});
+      var text = (el.childNodes.length===1 && el.childNodes[0].nodeType===3)
+                 ? el.childNodes[0].textContent.trim().slice(0,60) : '';
+      window.parent.postMessage({
+        type:'inspectClick',
+        tag: el.tagName ? el.tagName.toLowerCase() : '',
+        id: el.id||'',
+        cls: typeof el.className==='string' ? el.className.trim() : '',
+        text: text, attrs: attrs
+      }, '*');
+    }, true);
+  })();`;
+  win.document.documentElement.appendChild(s);
+}
+
+function removeInspectScript() {
+  const win = frame.contentWindow;
+  if (win) win.__inspectInjected = false;
+}
+
+function reloadPreview() { doUpdate(); showToast('再読み込みしました'); }
+
+/* ══════════════════════════════
+   行番号
+══════════════════════════════ */
+function updateLineNumbers() {
+  const lines = editor.value.split('\n').length;
+  lineCount.textContent = lines + ' 行';
+  let html = '';
+  for (let i = 1; i <= lines; i++) html += i + '<br>';
+  // line-highlightを消さないように
+  lineNumEl.innerHTML = '';
+  lineNumEl.appendChild(lineHl);
+  const span = document.createElement('div');
+  span.innerHTML = html;
+  span.style.cssText = 'position:relative;z-index:0;';
+  lineNumEl.appendChild(span);
+}
+
+editor.addEventListener('scroll', () => {
+  lineNumEl.scrollTop = editor.scrollTop;
+  syncFlashScroll();
+});
+
+/* ══════════════════════════════
+   インスペクト機能
+══════════════════════════════ */
+function toggleInspect() {
+  inspectMode = !inspectMode;
+  const btn = document.getElementById('btn-inspect');
+  const badge = document.getElementById('inspect-badge');
+  btn.classList.toggle('active', inspectMode);
+  badge.classList.toggle('on', inspectMode);
+  if (inspectMode) {
+    showToast('🔍 検査モード ON — プレビューの要素をクリック');
+    frame.style.cursor = 'crosshair';
+    injectInspectScript();
+  } else {
+    showToast('検査モード OFF');
+    frame.style.cursor = '';
+    hideElemInfo();
+    removeInspectScript();
+  }
+}
+
+// postMessage 受信
+window.addEventListener('message', (e) => {
+  if (!e.data || e.data.type !== 'inspectClick') return;
+  const { tag, id, cls, text, attrs } = e.data;
+  jumpToElement({ tag, id, cls, text, attrs });
+});
+
+function jumpToElement({ tag, id, cls, text, attrs }) {
+  const src = editor.value;
+  const lines = src.split('\n');
+
+  let bestIdx = -1;
+  let bestScore = -1;
+
+  // 各行でスコアリング
+  let charPos = 0;
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    const lineL = line.toLowerCase();
+    const tagPat = '<' + tag;
+    if (!lineL.includes(tagPat)) { charPos += line.length + 1; continue; }
+
+    let score = 1; // タグが一致
+    if (id && line.includes('id="' + id + '"')) score += 100;
+    if (id && line.includes("id='" + id + "'")) score += 100;
+    if (cls) {
+      const firstCls = cls.split(' ')[0];
+      if (firstCls && line.includes(firstCls)) score += 30;
+    }
+    // 属性マッチ
+    if (attrs) {
+      attrs.forEach(a => {
+        if (a.name !== 'id' && line.includes(a.name + '="' + a.value + '"')) score += 10;
+      });
+    }
+    // テキストが次の行にある場合
+    if (text && li + 1 < lines.length && lines[li+1].trim().startsWith(text.slice(0,10))) score += 5;
+
+    if (score > bestScore) { bestScore = score; bestIdx = charPos + line.indexOf(tagPat); }
+    charPos += line.length + 1;
+  }
+
+  if (bestIdx === -1) { showToast('コードが見つかりませんでした'); return; }
+
+  // 行番号を求める
+  const beforeMatch = src.substring(0, bestIdx);
+  const lineNo = beforeMatch.split('\n').length; // 1-based
+
+  // 該当タグの終端を求める
+  const tagEnd = src.indexOf('>', bestIdx);
+  const selEnd = tagEnd !== -1 ? tagEnd + 1 : bestIdx + 10;
+
+  // エディタにフォーカスして選択
+  editor.focus();
+  editor.setSelectionRange(bestIdx, selEnd);
+  scrollEditorToLine(lineNo);
+  flashLineHighlight(lineNo);
+
+  // 要素情報バー表示
+  showElemInfo(tag, id, cls, lineNo);
+}
+
+/* 指定行にスクロール */
+function scrollEditorToLine(lineNo) {
+  const lineHeight = parseFloat(getComputedStyle(editor).lineHeight);
+  const targetScroll = (lineNo - 4) * lineHeight;
+  editor.scrollTop = Math.max(0, targetScroll);
+}
+
+/* フラッシュハイライト */
+function flashLineHighlight(lineNo) {
+  const lineHeight = parseFloat(getComputedStyle(editor).lineHeight);
+  const topPx = (lineNo - 1) * lineHeight + 12; // 12px = padding-top
+
+  // 行番号エリアのハイライト
+  lineHl.style.top    = topPx + 'px';
+  lineHl.style.height = lineHeight + 'px';
+
+  // エディタ本体のフラッシュ
+  flashLine.style.top    = topPx + 'px';
+  flashLine.style.height = lineHeight + 'px';
+  flashLine.style.opacity = '1';
+  flashLine.style.transition = 'opacity .05s';
+
+  syncFlashScroll();
+
+  setTimeout(() => {
+    flashLine.style.transition = 'opacity 1.2s ease';
+    flashLine.style.opacity = '0';
+    // 行番号ハイライトは残す（薄め）
+  }, 200);
+}
+
+function syncFlashScroll() {
+  const fo = document.getElementById('flash-overlay');
+  fo.style.top = (-editor.scrollTop) + 'px';
+}
+
+function showElemInfo(tag, id, cls, lineNo) {
+  document.getElementById('elem-tag').textContent = '<' + tag + '>';
+  document.getElementById('elem-id').textContent  = id  ? '#' + id  : '';
+  document.getElementById('elem-cls').textContent = cls ? '.' + cls.split(' ').join(' .') : '';
+  document.getElementById('elem-line').textContent = lineNo + ' 行目';
+  elemInfo.classList.add('show');
+}
+function hideElemInfo() {
+  elemInfo.classList.remove('show');
+  lineHl.style.height = '0';
+}
+
+/* ══════════════════════════════
+   キーボード
+══════════════════════════════ */
+editor.addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const s = editor.selectionStart, en = editor.selectionEnd;
+    if (e.shiftKey) {
+      const before = editor.value.substring(0, s);
+      const lineStart = before.lastIndexOf('\n') + 1;
+      if (editor.value.substring(lineStart, lineStart + 2) === '  ') {
+        editor.value = editor.value.substring(0, lineStart) + editor.value.substring(lineStart + 2);
+        editor.selectionStart = editor.selectionEnd = Math.max(lineStart, s - 2);
+      }
+    } else {
+      editor.value = editor.value.substring(0, s) + '  ' + editor.value.substring(en);
+      editor.selectionStart = editor.selectionEnd = s + 2;
+    }
+    updatePreview(); return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); doUpdate(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') { e.preventDefault(); formatCode(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); downloadHtml(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'i') { e.preventDefault(); toggleInspect(); return; }
+
+  // 閉じタグ補完
+  if (e.key === '>') {
+    setTimeout(() => {
+      const s = editor.selectionStart;
+      const before = editor.value.substring(0, s);
+      const tagMatch = before.match(/<([a-zA-Z][a-zA-Z0-9]*)(?:\s[^>]*)?>$/);
+      const voids = ['br','hr','img','input','meta','link','area','base','col','embed','source','track','wbr'];
+      if (tagMatch && !voids.includes(tagMatch[1].toLowerCase())) {
+        const tag = tagMatch[1];
+        const after = editor.value.substring(s);
+        editor.value = before + '</' + tag + '>' + after;
+        editor.selectionStart = editor.selectionEnd = s;
+      }
+    }, 0);
+  }
+});
+
+editor.addEventListener('input', () => updatePreview());
+
+/* ══════════════════════════════
+   レイアウト & リサイザ
+══════════════════════════════ */
+function setLayout(mode) {
+  layout = mode;
+  const main = document.getElementById('main');
+  const ep   = document.getElementById('editor-pane');
+  main.className = 'layout-' + mode;
+  document.getElementById('btn-side').classList.toggle('active', mode === 'side');
+  document.getElementById('btn-stack').classList.toggle('active', mode === 'stack');
+  ep.style.width = ''; ep.style.height = '';
+}
+
+const resizer   = document.getElementById('resizer');
+const editorPane= document.getElementById('editor-pane');
+const main      = document.getElementById('main');
+let isResizing  = false, startPos = 0, startSize = 0;
+
+resizer.addEventListener('pointerdown', e => {
+  isResizing = true; resizer.classList.add('dragging');
+  startPos  = layout === 'side' ? e.clientX : e.clientY;
+  startSize = layout === 'side' ? editorPane.offsetWidth : editorPane.offsetHeight;
+  resizer.setPointerCapture(e.pointerId);
+});
+resizer.addEventListener('pointermove', e => {
+  if (!isResizing) return;
+  const delta = (layout === 'side' ? e.clientX : e.clientY) - startPos;
+  const total = layout === 'side' ? main.offsetWidth : main.offsetHeight;
+  const newSize = Math.min(Math.max(startSize + delta, 200), total - 200);
+  if (layout === 'side') editorPane.style.width  = newSize + 'px';
+  else                   editorPane.style.height = newSize + 'px';
+});
+resizer.addEventListener('pointerup', () => { isResizing = false; resizer.classList.remove('dragging'); });
+
+/* ══════════════════════════════
+   ツールバーアクション
+══════════════════════════════ */
+function copyCode() {
+  navigator.clipboard.writeText(editor.value).then(() => showToast('コピーしました'));
+}
+function downloadHtml() {
+  const fname = document.getElementById('filename').value || 'index.html';
+  const blob = new Blob([editor.value], { type:'text/html;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = fname.endsWith('.html') ? fname : fname + '.html';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(a.href);
+  showToast('ダウンロード: ' + a.download);
+}
+function formatCode() {
+  const voids = ['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr'];
+  let indent = 0, result = '';
+  const tagRe = /(<\/?[a-zA-Z][^>]*>|<!--[\s\S]*?-->|[^<]+)/g;
+  let match;
+  while ((match = tagRe.exec(editor.value)) !== null) {
+    const tok = match[0].trim(); if (!tok) continue;
+    if (/^<!--/.test(tok)) { result += '  '.repeat(indent) + tok + '\n'; }
+    else if (/^<\//.test(tok)) { indent = Math.max(0,indent-1); result += '  '.repeat(indent)+tok+'\n'; }
+    else if (/^<[^!]/.test(tok)) {
+      result += '  '.repeat(indent)+tok+'\n';
+      const tn = (tok.match(/^<([a-zA-Z][a-zA-Z0-9]*)/) || [])[1];
+      if (tn && !voids.includes(tn.toLowerCase()) && !tok.endsWith('/>') && !/<\//.test(tok)) indent++;
+    } else { result += '  '.repeat(indent)+tok+'\n'; }
+  }
+  editor.value = result.trimEnd();
+  updatePreview(); showToast('整形しました');
+}
+function showShortcuts(show) { document.getElementById('shortcuts').classList.toggle('show', show); }
+function showToast(msg, dur=2000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), dur);
+}
+
+/* 初期化 */
+updateLineNumbers();
+</script>
+</body>
+</html>
