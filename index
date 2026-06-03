@@ -255,7 +255,7 @@ html,body { height:100%; background:var(--bg); color:var(--text); font-family:va
       <div id="preview-url">about:blank</div>
       <button class="tb-btn" onclick="reloadPreview()">↺</button>
     </div>
-    <iframe id="preview-frame" sandbox="allow-scripts allow-same-origin allow-forms" title="プレビュー"></iframe>
+    <iframe id="preview-frame" sandbox="allow-scripts allow-same-origin allow-forms" title="プレビュー" style="color-scheme:dark"></iframe>
   </div>
 </div>
 
