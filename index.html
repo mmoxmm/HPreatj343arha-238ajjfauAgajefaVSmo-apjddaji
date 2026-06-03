@@ -216,6 +216,7 @@ html,body { height:100%; background:var(--bg); color:var(--text); font-family:va
     <button id="btn-stack" onclick="setLayout('stack')">🟦</button>
   </div>
   <div class="divider"></div>
+  <button class="tb-btn" onclick="openFindBar()">🔎 検索</button>
   <button class="tb-btn" onclick="formatCode()">✦ 整形</button>
   <button class="tb-btn" onclick="copyCode()">⎘ コピー</button>
   <button class="tb-btn accent" onclick="downloadHtml()">↓ DL</button>
@@ -229,6 +230,17 @@ html,body { height:100%; background:var(--bg); color:var(--text); font-family:va
       <span class="pane-title">HTML</span>
       <span id="line-count">0 行</span>
     </div>
+<div id="find-bar" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:var(--bg3);border-bottom:1px solid var(--border);flex-shrink:0">
+  <input id="find-inp" placeholder="検索..." style="width:140px;height:24px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-family:var(--font-mono);font-size:12px;padding:0 7px;outline:none">
+  <input id="replace-inp" placeholder="置換..." style="width:140px;height:24px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-family:var(--font-mono);font-size:12px;padding:0 7px;outline:none">
+  <button class="tb-btn" onclick="findNext()">↓ 次</button>
+  <button class="tb-btn" onclick="findPrev()">↑ 前</button>
+  <button class="tb-btn" onclick="replaceOne()">置換</button>
+  <button class="tb-btn" onclick="replaceAll()">全置換</button>
+  <span id="find-count" style="font-size:11px;color:var(--text3);white-space:nowrap"></span>
+  <button class="tb-btn" onclick="closeFindBar()" style="margin-left:auto">✕</button>
+</div>
+    
     <div id="editor-wrap">
       <div id="line-numbers">
         <div id="line-highlight"></div>
@@ -649,7 +661,94 @@ function showToast(msg, dur=2000) {
   t.textContent = msg; t.classList.add('show');
   clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), dur);
 }
+/* ══════════════════════════════
+   検索・置換
+══════════════════════════════ */
+let findMatches = [];
+let findIdx = 0;
 
+function openFindBar() {
+  const bar = document.getElementById('find-bar');
+  bar.style.display = 'flex';
+  document.getElementById('find-inp').focus();
+}
+function closeFindBar() {
+  document.getElementById('find-bar').style.display = 'none';
+  document.getElementById('find-count').textContent = '';
+  findMatches = []; findIdx = 0;
+}
+function collectMatches() {
+  const needle = document.getElementById('find-inp').value;
+  findMatches = [];
+  if (!needle) { document.getElementById('find-count').textContent = ''; return; }
+  const src = editor.value;
+  let i = 0;
+  while (true) {
+    const pos = src.indexOf(needle, i);
+    if (pos === -1) break;
+    findMatches.push(pos);
+    i = pos + 1;
+  }
+  document.getElementById('find-count').textContent =
+    findMatches.length ? (findIdx + 1) + ' / ' + findMatches.length : '見つかりません';
+}
+function findNext() {
+  collectMatches();
+  if (!findMatches.length) return;
+  findIdx = (findIdx + 1) % findMatches.length;
+  jumpToMatch();
+}
+function findPrev() {
+  collectMatches();
+  if (!findMatches.length) return;
+  findIdx = (findIdx - 1 + findMatches.length) % findMatches.length;
+  jumpToMatch();
+}
+function jumpToMatch() {
+  const needle = document.getElementById('find-inp').value;
+  const pos = findMatches[findIdx];
+  editor.focus();
+  editor.setSelectionRange(pos, pos + needle.length);
+  const lineNo = editor.value.substring(0, pos).split('\n').length;
+  scrollEditorToLine(lineNo);
+  flashLineHighlight(lineNo);
+  document.getElementById('find-count').textContent = (findIdx + 1) + ' / ' + findMatches.length;
+}
+function replaceOne() {
+  const needle = document.getElementById('find-inp').value;
+  const rep = document.getElementById('replace-inp').value;
+  if (!needle) return;
+  collectMatches();
+  if (!findMatches.length) return;
+  const pos = findMatches[findIdx];
+  editor.value = editor.value.substring(0, pos) + rep + editor.value.substring(pos + needle.length);
+  updatePreview();
+  collectMatches();
+  showToast('1件置換しました');
+}
+function replaceAll() {
+  const needle = document.getElementById('find-inp').value;
+  const rep = document.getElementById('replace-inp').value;
+  if (!needle) return;
+  const count = editor.value.split(needle).length - 1;
+  if (!count) { showToast('見つかりません'); return; }
+  editor.value = editor.value.split(needle).join(rep);
+  updatePreview();
+  findMatches = []; findIdx = 0;
+  document.getElementById('find-count').textContent = '';
+  showToast(count + '件置換しました');
+}
+
+// Ctrl+F で開く
+editor.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+    e.preventDefault(); openFindBar();
+  }
+});
+document.getElementById('find-inp').addEventListener('keydown', e => {
+  if (e.key === 'Enter') e.shiftKey ? findPrev() : findNext();
+  if (e.key === 'Escape') closeFindBar();
+});
 /* 初期化 */
 updateLineNumbers();
 </script>
