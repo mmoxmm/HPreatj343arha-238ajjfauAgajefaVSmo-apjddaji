@@ -327,8 +327,8 @@ function injectInspectScript() {
       _ov.style.display='block';
     }, true);
     document.addEventListener('mouseout', function(){ _ov.style.display='none'; }, true);
-    document.addEventListener('click', function(e){
-      e.preventDefault(); e.stopPropagation();
+ document.addEventListener('click', function(e){
+  e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
       var el = e.target;
       var attrs = [];
       if (el.attributes) for (var i=0;i<el.attributes.length;i++)
